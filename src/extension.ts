@@ -167,24 +167,47 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
             const rootPath = workspaceFolders[0].uri.fsPath;
             const files = await this._preprocessor.getRelevantFiles(rootPath);
             
-            this._outputChannel.appendLine(`🔍 Found ${files.length} relevant files in workspace.`);
+            this._outputChannel.appendLine(`🔍 Found ${files.length} relevant files in workspace. Running local heuristics...`);
             
             let allSecrets: any[] = [];
             let results: any[] = [];
+            let scoredFiles: { file: string, result: any, score: number }[] = [];
 
-            for (const file of files.slice(0, 10)) {
-                const fileName = path.basename(file);
-                this._outputChannel.appendLine(`\n----------------------------------------`);
-                this._outputChannel.appendLine(`📝 Analyzing: ${fileName}`);
-                
+            // Phase 1: Local Pre-Scan for Risk Triage
+            for (const file of files) {
                 const content = fs.readFileSync(file, 'utf8');
                 const localResult = this._preprocessor.scanFile(file, content);
                 
-                this._outputChannel.appendLine(`   - Local scan: Found ${localResult.secrets.length} potential secrets.`);
+                // Keep all detected secrets
+                const fileName = path.basename(file);
+                allSecrets.push(...localResult.secrets.map(s => ({ ...s, file: fileName })));
+                
+                if (localResult.riskScore > 0 || localResult.secrets.length > 0 || localResult.entryPoints.length > 0) {
+                    scoredFiles.push({ file, result: localResult, score: localResult.riskScore });
+                }
+            }
+
+            // Phase 2: Prioritize High-Risk Files
+            scoredFiles.sort((a, b) => b.score - a.score);
+            const MAX_AI_SCANS = 5; // Cap AI scans for performance
+            const topRiskyFiles = scoredFiles.slice(0, MAX_AI_SCANS);
+
+            this._outputChannel.appendLine(`⚠️ Identified ${scoredFiles.length} potentially risky files.`);
+            this._outputChannel.appendLine(`🧠 Deep scanning the top ${topRiskyFiles.length} most critical files to save time...`);
+
+            for (const item of topRiskyFiles) {
+                const fileName = path.basename(item.file);
+                this._outputChannel.appendLine(`\n----------------------------------------`);
+                this._outputChannel.appendLine(`📝 Deep Analyzing: ${fileName} (Risk Score: ${item.score})`);
+                
+                const content = fs.readFileSync(item.file, 'utf8');
+                
+                // Truncate massive files to save LLM context
+                const scanContent = content.length > 15000 ? content.substring(0, 15000) + '\n...[TRUNCATED]' : content;
                 
                 const prompt = this._aiClient.generatePrompt(
-                    { language: path.extname(file), filename: fileName, entry_points: localResult.entryPoints },
-                    { code: content }
+                    { language: path.extname(item.file), filename: fileName, entry_points: item.result.entryPoints },
+                    { code: scanContent }
                 );
                 
                 try {
@@ -199,8 +222,6 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
                 } catch (aiErr: any) {
                     this._outputChannel.appendLine(`   - AI Error: ${aiErr.message}`);
                 }
-
-                allSecrets.push(...localResult.secrets.map(s => ({ ...s, file: fileName })));
             }
 
             this._outputChannel.appendLine(`\n----------------------------------------`);
