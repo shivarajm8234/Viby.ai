@@ -4,6 +4,7 @@ import * as path from 'path';
 export interface ScanResult {
     secrets: { type: string, line: number, preview: string, severity: string }[];
     entryPoints: string[];
+    riskScore: number;
 }
 
 export class Preprocessor {
@@ -18,9 +19,19 @@ export class Preprocessor {
         { language: 'python', pattern: /@(?:app|router)\.(?:route|get|post|put|delete)\s*\(\s*['"]([^'"]+)['"]/g }
     ];
 
+    private dangerousKeywords = [
+        { regex: /\beval\s*\(/g, weight: 50 },
+        { regex: /\bexec(?:Sync)?\s*\(/g, weight: 40 },
+        { regex: /dangerouslySetInnerHTML/g, weight: 50 },
+        { regex: /\bquery\s*\(/g, weight: 30 },
+        { regex: /\b(password|secret|token)\b/gi, weight: 10 },
+        { regex: /\badmin\b/gi, weight: 10 }
+    ];
+
     public scanFile(filePath: string, content: string): ScanResult {
         const secrets: ScanResult['secrets'] = [];
         const entryPoints: string[] = [];
+        let riskScore = 0;
 
         // Secret Detection
         this.secretRegexes.forEach(({ type, regex }) => {
@@ -33,6 +44,7 @@ export class Preprocessor {
                     preview: match[1] ? match[1].substring(0, 4) + '****' : '****',
                     severity: 'high'
                 });
+                riskScore += 50; // High risk for secrets
             }
         });
 
@@ -41,10 +53,19 @@ export class Preprocessor {
             let match;
             while ((match = pattern.exec(content)) !== null) {
                 entryPoints.push(`${match[1].toUpperCase()} ${match[2]}`);
+                riskScore += 20; // Entry points add to risk
             }
         });
 
-        return { secrets, entryPoints };
+        // Dangerous Keywords
+        this.dangerousKeywords.forEach(({ regex, weight }) => {
+            let match;
+            while ((match = regex.exec(content)) !== null) {
+                riskScore += weight;
+            }
+        });
+
+        return { secrets, entryPoints, riskScore };
     }
 
     public async getRelevantFiles(workspaceRoot: string): Promise<string[]> {
