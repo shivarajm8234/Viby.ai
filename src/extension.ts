@@ -187,15 +187,13 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
                 }
             }
 
-            // Phase 2: Prioritize High-Risk Files
+            // Phase 2: Prioritize High-Risk Files but SCAN ALL
             scoredFiles.sort((a, b) => b.score - a.score);
-            const MAX_AI_SCANS = 5; // Cap AI scans for performance
-            const topRiskyFiles = scoredFiles.slice(0, MAX_AI_SCANS);
 
-            this._outputChannel.appendLine(`⚠️ Identified ${scoredFiles.length} potentially risky files.`);
-            this._outputChannel.appendLine(`🧠 Deep scanning the top ${topRiskyFiles.length} most critical files to save time...`);
+            this._outputChannel.appendLine(`⚠️ Identified ${scoredFiles.length} files for AI analysis.`);
+            this._outputChannel.appendLine(`🧠 Deep scanning ALL files, prioritizing highest risk first...`);
 
-            for (const item of topRiskyFiles) {
+            for (const item of scoredFiles) {
                 const fileName = path.basename(item.file);
                 this._outputChannel.appendLine(`\n----------------------------------------`);
                 this._outputChannel.appendLine(`📝 Deep Analyzing: ${fileName} (Risk Score: ${item.score})`);
