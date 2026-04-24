@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out/
+*.vsix
+.vscode-test/
+.history/
+.DS_Store
+package-lock.json
