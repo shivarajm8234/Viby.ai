@@ -1,22 +1,40 @@
-# Viby Security Auditor
+# Viby.ai: Elite Security Auditor 🛡️
 
-Elite AI-powered application security auditor and defensive penetration tester for VS Code.
+Viby.ai is an advanced, AI-powered security auditing and penetration testing extension for Visual Studio Code. It combines local heuristics with the power of **Groq Cloud API** and **Ollama** to provide real-time, actionable security insights.
 
-## Features
+## 🚀 Key Features
 
-- **Hybrid Scanning**: Fast local regex scanning combined with deep AI reasoning (Ollama).
-- **Inline Diagnostics**: Risk highlighting directly in the editor.
-- **AI Code Actions**: "Fix with Viby AI" to instantly apply secure code fixes.
-- **Premium Dashboard**: A futuristic, glassmorphism-inspired sidebar.
-- **Secret Detection**: Automatic discovery of API keys, passwords, and tokens.
+- **Hybrid Intelligence**: 
+    - **Groq Cloud Support**: Lightning-fast inference using Llama 3.1, Mixtral, and Gemma models via Groq.
+    - **Local Ollama Support**: Run private, offline audits using local LLMs.
+- **Dynamic Scanning Options**:
+    - **Deep Workspace Scan**: Full-scale audit of your entire repository.
+    - **Scan Active File**: Instant, targeted security check for the file you are currently editing.
+- **Attack Simulation**: Visualize how a vulnerability could be exploited with multi-step attack vectors and exploit payloads.
+- **One-Click Secure Fixes**: Apply secure code replacements directly from the dashboard. Fixes include necessary commands as comments (e.g., `// npm install ...`).
+- **Secret Detection**: Automatically identifies API keys, passwords, and private tokens before they are committed.
+- **Futuristic UI**: High-performance dashboard with glassmorphism aesthetics and real-time risk scoring.
 
-## Requirements
+## 🛠️ Setup
 
-- [Ollama](https://ollama.com/) running locally with the `llama3` model.
+1. **Groq Cloud (Recommended)**:
+   - Create a `.env` file in your workspace root.
+   - Add your key: `GROQ_API_KEY=your_key_here`.
+2. **Ollama (Optional Local)**:
+   - Ensure [Ollama](https://ollama.com/) is running locally if you prefer offline scanning.
 
-## Usage
+## 📖 Usage
 
 1. Open the **Viby Security** tab in the Activity Bar.
-2. Click **RUN DEEP SCAN**.
-3. View results in the sidebar or check the editor for inline highlights.
-4. Hover over a highlighted risk and select **Fix with Viby AI** to apply a secure replacement.
+2. Select your preferred **AI Brain (Model)** from the dropdown.
+3. Use **DEEP SCAN** for the whole project or **SCAN ACTIVE** for the current file.
+4. Explore the **Attack Simulation** to understand risks from an offensive perspective.
+5. Click **SECURE FIX** or **APPLY RESOLUTION** to patch vulnerabilities instantly.
+
+## 🔐 Security & Privacy
+
+- Your API keys are managed via `.env` files and are never bundled into the extension package.
+- Local scanning (via Ollama) ensures your code never leaves your machine.
+
+---
+*Built for developers who take security seriously.*
