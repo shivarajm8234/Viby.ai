@@ -6,3 +6,4 @@ out/
 .history/
 .DS_Store
 package-lock.json
+.env

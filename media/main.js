@@ -8,7 +8,13 @@ vscode.postMessage({ type: 'ready' });
 document.getElementById('scan-btn').addEventListener('click', () => {
     const model = document.getElementById('model-select').value;
     vscode.postMessage({ type: 'scan', model });
-    document.getElementById('status').innerText = 'Initializing scan...';
+    document.getElementById('status').innerText = 'Initializing deep scan...';
+});
+
+document.getElementById('scan-active-btn').addEventListener('click', () => {
+    const model = document.getElementById('model-select').value;
+    vscode.postMessage({ type: 'scanActive', model });
+    document.getElementById('status').innerText = 'Scanning active file...';
 });
 
 document.getElementById('github-btn').addEventListener('click', () => {
@@ -73,7 +79,7 @@ function renderResults(data) {
     container.innerHTML = '';
 
     const avgScore = data.aiResults.length > 0 
-        ? Math.round(data.aiResults.reduce((acc, r) => acc + (r.summary?.risk_score || 0), 0) / data.aiResults.length)
+        ? Math.round(data.aiResults.reduce((acc, r) => acc + (Number(r.summary?.risk_score) || 0), 0) / data.aiResults.length)
         : 0;
 
     const scoreCard = document.createElement('div');
@@ -139,7 +145,7 @@ function renderAttackResults(data) {
     const container = document.getElementById('results-container');
     container.innerHTML = '';
 
-    const riskScore = data.risk_score || 0;
+    const riskScore = Number(data.risk_score) || 0;
     const scoreCard = document.createElement('div');
     scoreCard.className = 'card';
     scoreCard.innerHTML = `
@@ -178,8 +184,11 @@ function renderAttackResults(data) {
                 </div>
                 
                 <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--glass-border)">
-                    <strong style="color: var(--success); font-size: 0.75rem;">RESOLVE TECHNIQUE:</strong>
-                    <p style="color: var(--success); font-size: 0.75rem; margin-top: 4px;">${attack.resolve_technique || 'Manual review required.'}</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <strong style="color: var(--success); font-size: 0.75rem;">RESOLVE TECHNIQUE:</strong>
+                        ${attack.target_line ? `<button class="fix-btn action-fix-btn" style="padding: 2px 8px; font-size: 0.6rem; margin: 0;" data-file="${attack.target_file}" data-line="${attack.target_line}" data-fix="${encodeURIComponent(attack.resolve_technique || '')}">APPLY RESOLUTION</button>` : ''}
+                    </div>
+                    <pre style="background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px; font-size: 0.7rem; color: var(--success); margin-top: 4px; white-space: pre-wrap; word-break: break-all;"><code>${(attack.resolve_technique || 'Manual review required.').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
                 </div>
             </div>
         `;

@@ -25,6 +25,12 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('viby-sec-auditor.scanActiveFile', async () => {
+            await sidebarProvider.scanActiveFile();
+        })
+    );
+
+    context.subscriptions.push(
         vscode.languages.registerCodeActionsProvider('*', new SecurityCodeActionProvider(), {
             providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
         })
@@ -63,7 +69,7 @@ class SecurityCodeActionProvider implements vscode.CodeActionProvider {
 
 class SecuritySidebarProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
-    private _selectedModel: string = 'llama3';
+    private _selectedModel: string = 'llama3-70b-8192';
     private _lastResults: any[] = [];
 
     constructor(
@@ -98,6 +104,10 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
                 case 'scan':
                     this._selectedModel = data.model;
                     await this.scanWorkspace();
+                    break;
+                case 'scanActive':
+                    this._selectedModel = data.model;
+                    await this.scanActiveFile();
                     break;
                 case 'github-scan':
                     await this.scanGitHubRepo(data.url);
@@ -157,14 +167,20 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
     }
 
     private async _applyFix(fileName: string, line: number, fix: string) {
-        const files = await vscode.workspace.findFiles(`**/${fileName}`);
-        if (files.length > 0) {
-            const doc = await vscode.workspace.openTextDocument(files[0]);
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return;
+        
+        const rootPath = workspaceFolders[0].uri.fsPath;
+        const fullPath = path.isAbsolute(fileName) ? fileName : path.join(rootPath, fileName);
+        
+        if (fs.existsSync(fullPath)) {
+            const uri = vscode.Uri.file(fullPath);
+            const doc = await vscode.workspace.openTextDocument(uri);
             const edit = new vscode.WorkspaceEdit();
             const lineIndex = line - 1;
             if (lineIndex >= 0 && lineIndex < doc.lineCount) {
                 const lineRange = doc.lineAt(lineIndex).range;
-                edit.replace(files[0], lineRange, fix);
+                edit.replace(uri, lineRange, fix);
                 await vscode.workspace.applyEdit(edit);
 
                 const editor = await vscode.window.showTextDocument(doc);
@@ -176,7 +192,7 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
                 editor.selection = new vscode.Selection(newRange.start, newRange.end);
                 editor.revealRange(newRange, vscode.TextEditorRevealType.InCenter);
 
-                vscode.window.showInformationMessage(`Viby AI: Applied secure fix to ${fileName}`);
+                vscode.window.showInformationMessage(`Viby AI: Applied secure fix to ${path.basename(fileName)}`);
                 await doc.save();
             }
         }
@@ -215,6 +231,50 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
         } catch (e: any) {
             clearInterval(interval);
             this._view.webview.postMessage({ type: 'status', message: `❌ ERROR: Hacking session terminated: ${e.message}` });
+        }
+    }
+
+    public async scanActiveFile() {
+        if (!this._view) return;
+
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('Viby: No active file to scan.');
+            return;
+        }
+
+        const filePath = editor.document.uri.fsPath;
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return;
+        const rootPath = workspaceFolders[0].uri.fsPath;
+        const relativePath = path.relative(rootPath, filePath);
+
+        try {
+            this._outputChannel.clear();
+            this._outputChannel.show(true);
+            this._outputChannel.appendLine(`🚀 Starting Viby Scan for Active File: ${relativePath}`);
+            this._outputChannel.appendLine(`🧠 Using AI Model: ${this._selectedModel}`);
+
+            this._diagnosticCollection.delete(editor.document.uri);
+            this._view.webview.postMessage({ type: 'status', message: `Analyzing ${path.basename(filePath)}...` });
+
+            const content = editor.document.getText();
+            const localResult = this._preprocessor.scanFile(filePath, content);
+
+            const prompt = this._aiClient.generatePrompt(
+                { language: path.extname(filePath), filename: relativePath, entry_points: localResult.entryPoints },
+                { code: content }
+            );
+
+            const aiResult = await this._aiClient.analyze(prompt, this._selectedModel);
+            
+            this._lastResults = [{ file: relativePath, ...aiResult }];
+            this._view.webview.postMessage({ type: 'results', data: { secrets: localResult.secrets.map(s => ({ ...s, file: relativePath })), aiResults: this._lastResults } });
+            
+            this._outputChannel.appendLine(`✅ Scan Complete. Detected ${aiResult.vulnerabilities?.length || 0} issues.`);
+        } catch (e: any) {
+            this._outputChannel.appendLine(`❌ Error: ${e.message}`);
+            this._view.webview.postMessage({ type: 'status', message: `❌ Error: ${e.message}` });
         }
     }
 
@@ -261,9 +321,9 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
             this._outputChannel.appendLine(`🧠 Deep scanning ALL files, prioritizing highest risk first...`);
 
             for (const item of scoredFiles) {
-                const fileName = path.basename(item.file);
+                const relativePath = path.relative(rootPath, item.file);
                 this._outputChannel.appendLine(`\n----------------------------------------`);
-                this._outputChannel.appendLine(`📝 Deep Analyzing: ${fileName} (Risk Score: ${item.score})`);
+                this._outputChannel.appendLine(`📝 Deep Analyzing: ${relativePath} (Risk Score: ${item.score})`);
 
                 const content = fs.readFileSync(item.file, 'utf8');
 
@@ -271,7 +331,7 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
                 const scanContent = content.length > 8000 ? content.substring(0, 8000) + '\n...[TRUNCATED]' : content;
 
                 const prompt = this._aiClient.generatePrompt(
-                    { language: path.extname(item.file), filename: fileName, entry_points: item.result.entryPoints },
+                    { language: path.extname(item.file), filename: relativePath, entry_points: item.result.entryPoints },
                     { code: scanContent }
                 );
 
@@ -283,7 +343,7 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
                         this._outputChannel.appendLine(`     [!] ${v.severity.toUpperCase()}: ${v.title}`);
                     });
 
-                    results.push({ file: fileName, ...aiResult });
+                    results.push({ file: relativePath, ...aiResult });
                 } catch (aiErr: any) {
                     this._outputChannel.appendLine(`   - AI Error: ${aiErr.message}`);
                 }
@@ -338,7 +398,10 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
 
                     <div class="actions-grid">
                         <button id="scan-btn" class="primary-btn">DEEP SCAN</button>
-                        <button id="github-btn" class="secondary-btn">GH SCAN</button>
+                        <button id="scan-active-btn" class="secondary-btn">SCAN ACTIVE</button>
+                    </div>
+                    <div class="actions-grid" style="margin-top: 10px;">
+                        <button id="github-btn" class="secondary-btn" style="width: 100%;">GH SCAN</button>
                     </div>
 
                     <div id="results-container" class="results-container"></div>
