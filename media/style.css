@@ -160,6 +160,8 @@ select {
 .clickable:hover {
     background: rgba(255, 255, 255, 0.05);
 }
+
+.vuln-item h4 {
     margin: 0;
     font-size: 0.85rem;
 }
@@ -179,4 +181,17 @@ select {
     font-size: 0.7rem;
     cursor: pointer;
     margin-top: 8px;
+}
+
+.score-circle {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 4px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin: 0 auto 10px auto;
 }

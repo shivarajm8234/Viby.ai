@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+replace with parameterized queries
 import * as path from 'path';
 import * as fs from 'fs';
 import axios from 'axios';
@@ -64,6 +64,7 @@ class SecurityCodeActionProvider implements vscode.CodeActionProvider {
 class SecuritySidebarProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _selectedModel: string = 'llama3';
+    private _lastResults: any[] = [];
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -71,7 +72,7 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
         private readonly _aiClient: OllamaClient,
         private readonly _diagnosticCollection: vscode.DiagnosticCollection,
         private readonly _outputChannel: vscode.OutputChannel
-    ) {}
+    ) { }
 
     public async resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -104,6 +105,12 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
                 case 'navigate':
                     this._openFile(data.file, data.line);
                     break;
+                case 'applyFix':
+                    this._applyFix(data.file, data.line, data.fix);
+                    break;
+                case 'simulateAttacks':
+                    this._simulateAttacks(data.model);
+                    break;
             }
         });
 
@@ -118,7 +125,7 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
             if (!session) return;
 
             this._view.webview.postMessage({ type: 'status', message: 'Connecting to GitHub...' });
-            
+
             // Basic URL parsing (e.g., https://github.com/owner/repo)
             const parts = url.replace('https://github.com/', '').split('/');
             if (parts.length < 2) throw new Error('Invalid GitHub URL');
@@ -130,7 +137,7 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
             });
 
             this._view.webview.postMessage({ type: 'status', message: `Fetched GitHub repo. Scanning \${response.data.length} files...` });
-            
+
             // Logic to chunk and scan files from GitHub would go here
             // For now, let's simulate the results
             this._view.webview.postMessage({ type: 'status', message: 'GitHub Scan not fully implemented in this demo, but authentication succeeded!' });
@@ -140,12 +147,56 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
     }
 
     private async _openFile(fileName: string, line: number) {
-        const files = await vscode.workspace.findFiles(`**/\${fileName}`);
+        const files = await vscode.workspace.findFiles(`**/${fileName}`);
         if (files.length > 0) {
             const doc = await vscode.workspace.openTextDocument(files[0]);
             const editor = await vscode.window.showTextDocument(doc);
             const range = new vscode.Range(line - 1, 0, line - 1, 0);
             editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+        }
+    }
+
+    private async _applyFix(fileName: string, line: number, fix: string) {
+        const files = await vscode.workspace.findFiles(`**/${fileName}`);
+        if (files.length > 0) {
+            const doc = await vscode.workspace.openTextDocument(files[0]);
+            const edit = new vscode.WorkspaceEdit();
+            const lineIndex = line - 1;
+            if (lineIndex >= 0 && lineIndex < doc.lineCount) {
+                const lineRange = doc.lineAt(lineIndex).range;
+                edit.replace(files[0], lineRange, fix);
+                await vscode.workspace.applyEdit(edit);
+
+                const editor = await vscode.window.showTextDocument(doc);
+                const newLines = fix.split('\n').length;
+                const endLine = lineIndex + newLines - 1;
+                const endChar = fix.split('\n').pop()?.length || 0;
+
+                const newRange = new vscode.Range(lineIndex, 0, endLine, endChar);
+                editor.selection = new vscode.Selection(newRange.start, newRange.end);
+                editor.revealRange(newRange, vscode.TextEditorRevealType.InCenter);
+
+                vscode.window.showInformationMessage(`Viby AI: Applied secure fix to ${fileName}`);
+                await doc.save();
+            }
+        }
+    }
+
+    private async _simulateAttacks(model: string) {
+        if (!this._view) return;
+        this._view.webview.postMessage({ type: 'status', message: 'Initializing attack simulation...' });
+
+        const prompt = this._aiClient.generateAttackSimulationPrompt(
+            { files: this._lastResults.map(r => r.file) },
+            { vulnerabilities: this._lastResults.flatMap(r => r.vulnerabilities || []) }
+        );
+
+        try {
+            const aiResult = await this._aiClient.analyze(prompt, model);
+            this._view.webview.postMessage({ type: 'attackResults', data: aiResult });
+            this._view.webview.postMessage({ type: 'status', message: 'Attack simulation complete.' });
+        } catch (e: any) {
+            this._view.webview.postMessage({ type: 'status', message: `❌ Attack Sim Error: ${e.message}` });
         }
     }
 
@@ -166,9 +217,9 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
 
             const rootPath = workspaceFolders[0].uri.fsPath;
             const files = await this._preprocessor.getRelevantFiles(rootPath);
-            
+
             this._outputChannel.appendLine(`🔍 Found ${files.length} relevant files in workspace. Running local heuristics...`);
-            
+
             let allSecrets: any[] = [];
             let results: any[] = [];
             let scoredFiles: { file: string, result: any, score: number }[] = [];
@@ -177,14 +228,12 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
             for (const file of files) {
                 const content = fs.readFileSync(file, 'utf8');
                 const localResult = this._preprocessor.scanFile(file, content);
-                
+
                 // Keep all detected secrets
                 const fileName = path.basename(file);
                 allSecrets.push(...localResult.secrets.map(s => ({ ...s, file: fileName })));
-                
-                if (localResult.riskScore > 0 || localResult.secrets.length > 0 || localResult.entryPoints.length > 0) {
-                    scoredFiles.push({ file, result: localResult, score: localResult.riskScore });
-                }
+
+                scoredFiles.push({ file, result: localResult, score: localResult.riskScore });
             }
 
             // Phase 2: Prioritize High-Risk Files but SCAN ALL
@@ -197,21 +246,21 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
                 const fileName = path.basename(item.file);
                 this._outputChannel.appendLine(`\n----------------------------------------`);
                 this._outputChannel.appendLine(`📝 Deep Analyzing: ${fileName} (Risk Score: ${item.score})`);
-                
+
                 const content = fs.readFileSync(item.file, 'utf8');
-                
+
                 // Truncate massive files to save LLM context
-                const scanContent = content.length > 15000 ? content.substring(0, 15000) + '\n...[TRUNCATED]' : content;
-                
+                const scanContent = content.length > 8000 ? content.substring(0, 8000) + '\n...[TRUNCATED]' : content;
+
                 const prompt = this._aiClient.generatePrompt(
                     { language: path.extname(item.file), filename: fileName, entry_points: item.result.entryPoints },
                     { code: scanContent }
                 );
-                
+
                 try {
                     const aiResult = await this._aiClient.analyze(prompt, this._selectedModel);
                     this._outputChannel.appendLine(`   - AI analysis: Detected ${aiResult.vulnerabilities?.length || 0} vulnerabilities.`);
-                    
+
                     aiResult.vulnerabilities?.forEach(v => {
                         this._outputChannel.appendLine(`     [!] ${v.severity.toUpperCase()}: ${v.title}`);
                     });
@@ -224,6 +273,7 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
 
             this._outputChannel.appendLine(`\n----------------------------------------`);
             this._outputChannel.appendLine(`✅ Scan Complete. Sending results to dashboard.`);
+            this._lastResults = results;
             this._view.webview.postMessage({ type: 'results', data: { secrets: allSecrets, aiResults: results } });
         } catch (e: any) {
             this._outputChannel.appendLine(`❌ Fatal Error: ${e.message}`);
@@ -232,7 +282,7 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
     }
 
     private _getSeverity(sev: string): vscode.DiagnosticSeverity {
-        switch(sev?.toLowerCase()) {
+        switch (sev?.toLowerCase()) {
             case 'critical':
             case 'high': return vscode.DiagnosticSeverity.Error;
             case 'medium': return vscode.DiagnosticSeverity.Warning;

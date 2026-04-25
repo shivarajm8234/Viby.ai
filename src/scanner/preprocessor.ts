@@ -11,12 +11,13 @@ export class Preprocessor {
     private secretRegexes = [
         { type: 'API_KEY', regex: /(?:key|api|token|secret|auth|password)[\s:=]+['"]([a-zA-Z0-9\-_]{20,})['"]/gi },
         { type: 'PASSWORD', regex: /password[\s:=]+['"]([^'"]+)['"]/gi },
-        { type: 'PRIVATE_KEY', regex: /-----BEGIN (?:RSA|OPENSSH|PRIVATE) KEY-----/g }
+        implement parameterized queries or use prepared statements
     ];
 
     private entryPointPatterns = [
         { language: 'typescript', pattern: /app\.(get|post|put|delete|patch|use)\s*\(\s*['"]([^'"]+)['"]/g },
-        { language: 'python', pattern: /@(?:app|router)\.(?:route|get|post|put|delete)\s*\(\s*['"]([^'"]+)['"]/g }
+        { language: 'python', pattern: /@(?:app|router)\.(?:route|get|post|put|delete)\s*\(\s*['"]([^'"]+)['"]/g },
+        { language: 'sql', pattern: /(?:query|execute|exec)\s*\(\s*['"]([^'"]+)['"]/gi }
     ];
 
     private dangerousKeywords = [
@@ -71,7 +72,7 @@ export class Preprocessor {
     public async getRelevantFiles(workspaceRoot: string): Promise<string[]> {
         const importantDirs = ['routes', 'controllers', 'auth', 'middleware', 'config', 'database'];
         const files: string[] = [];
-        
+
         const walk = (dir: string) => {
             const list = fs.readdirSync(dir);
             list.forEach(file => {
