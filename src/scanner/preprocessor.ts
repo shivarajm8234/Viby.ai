@@ -11,7 +11,7 @@ export class Preprocessor {
     private secretRegexes = [
         { type: 'API_KEY', regex: /(?:key|api|token|secret|auth|password)[\s:=]+['"]([a-zA-Z0-9\-_]{20,})['"]/gi },
         { type: 'PASSWORD', regex: /password[\s:=]+['"]([^'"]+)['"]/gi },
-        implement parameterized queries or use prepared statements
+        { type: 'PRIVATE_KEY', regex: /-----BEGIN (?:RSA|OPENSSH|PRIVATE) KEY-----/g }
     ];
 
     private entryPointPatterns = [

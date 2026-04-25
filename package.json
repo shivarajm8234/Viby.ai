@@ -2,7 +2,7 @@
   "name": "viby-sec-auditor",
   "displayName": "Viby Security Auditor",
   "description": "Elite AI-powered security auditor and penetration tester.",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "viby",
   "repository": {
     "type": "git",

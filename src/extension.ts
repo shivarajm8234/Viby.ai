@@ -1,4 +1,4 @@
-replace with parameterized queries
+import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import axios from 'axios';
@@ -184,7 +184,23 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
 
     private async _simulateAttacks(model: string) {
         if (!this._view) return;
-        this._view.webview.postMessage({ type: 'status', message: 'Initializing attack simulation...' });
+        
+        const terminalMessages = [
+            "> Initializing hacking engine...",
+            "> Enumerating target endpoints...",
+            "> Crafting malicious payloads...",
+            "> Injecting XSS/SQLi vectors...",
+            "> Analyzing response patterns...",
+            "> Generating attack report..."
+        ];
+
+        let msgIndex = 0;
+        const interval = setInterval(() => {
+            if (this._view && msgIndex < terminalMessages.length) {
+                this._view.webview.postMessage({ type: 'status', message: terminalMessages[msgIndex] });
+                msgIndex++;
+            }
+        }, 1200);
 
         const prompt = this._aiClient.generateAttackSimulationPrompt(
             { files: this._lastResults.map(r => r.file) },
@@ -193,10 +209,12 @@ class SecuritySidebarProvider implements vscode.WebviewViewProvider {
 
         try {
             const aiResult = await this._aiClient.analyze(prompt, model);
+            clearInterval(interval);
             this._view.webview.postMessage({ type: 'attackResults', data: aiResult });
-            this._view.webview.postMessage({ type: 'status', message: 'Attack simulation complete.' });
+            this._view.webview.postMessage({ type: 'status', message: "> Simulation complete. Accessing reports..." });
         } catch (e: any) {
-            this._view.webview.postMessage({ type: 'status', message: `❌ Attack Sim Error: ${e.message}` });
+            clearInterval(interval);
+            this._view.webview.postMessage({ type: 'status', message: `❌ ERROR: Hacking session terminated: ${e.message}` });
         }
     }
 
